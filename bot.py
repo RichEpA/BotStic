@@ -1,30 +1,25 @@
+import os
 import telebot
-from telebot import types
 from PIL import Image
 from io import BytesIO
-import io
-from moviepy.editor import *
-import os
-import re
 
-bot = telebot.TeleBot('6943064156:AAGPblILUoJKauMxbhfAmqqzkPBMZRaBuPs')
+bot = telebot.TeleBot('6943064156:AAF31l0eeaUUXWWGInzafZvwBTwbQAJErOU')
 
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    butn = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn1 = types.KeyboardButton('/newpack')
-    btn2 = types.KeyboardButton('/publ')
-    butn.row(btn1, btn2)
-    # bot.register_next_step_handler(message, on_click)
+    # Create a custom keyboard markup with buttons for each command
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    new_pack_button = telebot.types.KeyboardButton('/newpack')
+    publ_button = telebot.types.KeyboardButton('/publ')
+    markup.row(new_pack_button, publ_button)
+    # Send a message with the custom keyboard markup
+    bot.send_message(message.chat.id, "Welcome to the Sticker Pack Creator Bot!", reply_markup=markup)
 
 import os
 import telebot
 from PIL import Image
 from io import BytesIO
-
-# Создаем экземпляр бота с указанием токена, полученного от BotFather в Telegram
-bot = telebot.TeleBot('YOUR_TELEGRAM_BOT_TOKEN')
 
 # Словарь для хранения информации о созданных стикерпаках
 sticker_packs = {}
@@ -84,41 +79,46 @@ def save_sticker_photo(message, pack_name, sticker_index):
     sticker_packs[pack_name][sticker_index]['file_path'] = temp_file_path
     # Отправляем сообщение с запросом следующего стикера или команды для закрытия пака
     bot.send_message(message.chat.id, "Отправьте следующее эмодзи и фото для стикера в формате эмодзи, а затем фото. "
-                                      "Для завершения пака введите команду /close.")
+                                      "Для завершения пака введите команду /close или /publ для опубликования стикерпака.")
 
-# Обработчик команды /close
-@bot.message_handler(commands=['close'])
-def handle_close_command(message):
-    # Отправляем сообщение с завершением процесса создания пака
-    bot.send_message(message.chat.id, "Процесс создания стикерпака завершен.")
-    # Удаляем состояние ожидания для данного пользователя
-    bot.clear_step_handler(message)
-
-# Обработчик команды /publ
-@bot.message_handler(commands=['publ'])
-def handle_publish_command(message):
-    # Проверяем, есть ли аргументы в команде
-    if len(message.text.split(' ')) > 1:
-        # Получаем имя пака, который нужно опубликовать
-        pack_name = message.text.split(' ')[1]
-        # Создаем список для хранения ссылок на стикерпаки
-        sticker_links = []
-        # Публикуем каждый стикерпак и сохраняем ссылки
-        for sticker_pack_name, stickers in sticker_packs.items():
-            if sticker_pack_name == pack_name:
-                # Создаем стикеры в паке
-                for sticker in stickers:
-                    bot.add_sticker_to_set(message.chat.id, sticker_pack_name, open(sticker['file_path'], 'rb'), sticker['emoji'])
-                # Получаем ссылку на стикерпак
-                sticker_link = f"https://t.me/addstickers/{sticker_pack_name}"
-                sticker_links.append(sticker_link)
-        # Отправляем пользователю ссылки на опубликованные стикерпаки
-        bot.send_message(message.chat.id, "Ваши стикерпаки опубликованы и доступны по следующим ссылкам:")
-        for link in sticker_links:
-            bot.send_message(message.chat.id, link)
-    else:
-        # Если отсутствуют аргументы в команде, сообщаем об ошибке
-        bot.send_message(message.chat.id, "Пожалуйста, укажите имя пака для публикации.")
+# Обработчик команды /close или /publ
+@bot.message_handler(commands=['close', 'publ'])
+def handle_close_publ_command(message):
+    # Если пользователь выбирает команду /close
+    if message.text.startswith('/close'):
+        # Отправляем сообщение с завершением процесса создания пака
+        bot.send_message(message.chat.id, "Процесс создания стикерпака завершен.")
+        # Удаляем состояние ожидания для данного пользователя
+        bot.clear_step_handler(message)
+    # Если пользователь выбирает команду /publ
+    elif message.text.startswith('/publ'):
+        # Получаем состояние пользователя
+        state = bot.get_state(message.chat.id)
+        if state is not None and 'pack_name' in state:
+            pack_name = state['pack_name']
+            # Создаем список для хранения ссылок на стикерпаки
+            sticker_links = []
+            # Публикуем стикерпак на сервере Telegram
+            for sticker_pack_name, stickers in sticker_packs.items():
+                if sticker_pack_name == pack_name:
+                    # Создаем стикерпак
+                    result = bot.create_new_sticker_set(
+                        user_id=message.chat.id,
+                        name=sticker_pack_name,
+                        title=sticker_pack_name,
+                        emojis=' '.join([sticker['emoji'] for sticker in stickers]),
+                        png_sticker=open(stickers[0]['file_path'], 'rb')
+                    )
+                    # Получаем ссылку на стикерпак
+                    sticker_link = f"https://telegram.me/addstickers/{result.name}"
+                    sticker_links.append(sticker_link)
+            # Отправляем пользователю ссылки на опубликованные стикерпаки
+            bot.send_message(message.chat.id, "Ваши стикерпаки опубликованы и доступны по следующим ссылкам:")
+            for link in sticker_links:
+                bot.send_message(message.chat.id, link)
+        else:
+            # Если состояние пользователя отсутствует или в нем нет ключа pack_name, отправляем сообщение об ошибке
+            bot.send_message(message.chat.id, "Для публикации стикерпака необходимо сначала создать его с помощью команды /newpack.")
 
 # Запускаем бота
 bot.polling()
